@@ -73,8 +73,8 @@ def run(argv=None):
       '--runner=FlinkRunner',
       '--flink_version=1.8',
       '--flink_master_url=localhost:8081',
-      '--environment_type=LOOPBACK',
-      '--experimental=beam_fn_api',
+      '--environment_type=DOCKER',
+      '--experimental=beam_fn_api'
      
       # CHANGE 3/5: Your project ID is required in order to run your pipeline on
       # the Google Cloud Dataflow Service.
@@ -93,6 +93,8 @@ def run(argv=None):
   pipeline_options = PipelineOptions(pipeline_args)
   pipeline_options.view_as(SetupOptions).save_main_session = True
   with beam.Pipeline(options=pipeline_options) as p:
+
+
 
     # Read the text file[pattern] into a PCollection.
     lines = p | ReadFromText(known_args.input)
