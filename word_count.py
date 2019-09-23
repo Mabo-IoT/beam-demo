@@ -15,27 +15,7 @@
 # limitations under the License.
 #
 
-"""A minimalist word-counting workflow that counts words in Shakespeare.
-This is the first in a series of successively more detailed 'word count'
-examples.
-Next, see the wordcount pipeline, then the wordcount_debugging pipeline, for
-more detailed examples that introduce additional concepts.
-Concepts:
-1. Reading data from text files
-2. Specifying 'inline' transforms
-3. Counting a PCollection
-4. Writing data to Cloud Storage as text files
-To execute this pipeline locally, first edit the code to specify the output
-location. Output location could be a local file path or an output prefix
-on GCS. (Only update the output location marked with the first CHANGE comment.)
-To execute this pipeline remotely, first edit the code to set your project ID,
-runner type, the staging location, the temp location, and the output location.
-The specified GCS bucket(s) must already exist. (Update all the places marked
-with a CHANGE comment.)
-Then, run the pipeline as described in the README. It will be deployed and run
-using the Google Cloud Dataflow Service. No args are required to run the
-pipeline. You can see the results in your output bucket in the GCS browser.
-"""
+"""A word-counting workflow."""
 
 from __future__ import absolute_import
 
@@ -48,13 +28,46 @@ from past.builtins import unicode
 import apache_beam as beam
 from apache_beam.io import ReadFromText
 from apache_beam.io import WriteToText
+from apache_beam.metrics import Metrics
+from apache_beam.metrics.metric import MetricsFilter
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
 
+class WordExtractingDoFn(beam.DoFn):
+  """Parse each line of input text into words."""
+
+  def __init__(self):
+    self.words_counter = Metrics.counter(self.__class__, 'words')
+    self.word_lengths_counter = Metrics.counter(self.__class__, 'word_lengths')
+    self.word_lengths_dist = Metrics.distribution(
+        self.__class__, 'word_len_dist')
+    self.empty_line_counter = Metrics.counter(self.__class__, 'empty_lines')
+
+  def process(self, element):
+    """Returns an iterator over the words of this element.
+
+    The element is a line of text.  If the line is blank, note that, too.
+
+    Args:
+      element: the element being processed
+
+    Returns:
+      The processed element.
+    """
+    text_line = element.strip()
+    if not text_line:
+      self.empty_line_counter.inc(1)
+    words = re.findall(r'[\w\']+', text_line, re.UNICODE)
+    for w in words:
+      self.words_counter.inc()
+      self.word_lengths_counter.inc(len(w))
+      self.word_lengths_dist.update(len(w))
+    return words
+
+
 def run(argv=None):
   """Main entry point; defines and runs the wordcount pipeline."""
-
   parser = argparse.ArgumentParser()
   parser.add_argument('--input',
                       dest='input',
@@ -62,61 +75,82 @@ def run(argv=None):
                       help='Input file to process.')
   parser.add_argument('--output',
                       dest='output',
-                      # CHANGE 1/5: The Google Cloud Storage path is required
-                      # for outputting the results.
-                      default='gs://YOUR_OUTPUT_BUCKET/AND_OUTPUT_PREFIX',
+                      required=True,
                       help='Output file to write results to.')
   known_args, pipeline_args = parser.parse_known_args(argv)
+
   pipeline_args.extend([
       # CHANGE 2/5: (OPTIONAL) Change this to DataflowRunner to
       # run your pipeline on the Google Cloud Dataflow Service.
-      '--runner=FlinkRunner',
-      '--flink_version=1.8',
-      '--flink_master_url=localhost:8081',
-      '--environment_type=DOCKER',
-      '--experimental=beam_fn_api'
-     
-      # CHANGE 3/5: Your project ID is required in order to run your pipeline on
-      # the Google Cloud Dataflow Service.
+      # '--runner=port',
+      # # CHANGE 3/5: Your project ID is required in order to run your pipeline on
+      # # the Google Cloud Dataflow Service.
       # '--project=SET_YOUR_PROJECT_ID_HERE',
-      # CHANGE 4/5: Your Google Cloud Storage path is required for staging local
-      # files.
+      # # CHANGE 4/5: Your Google Cloud Storage path is required for staging local
+      # # files.
       # '--staging_location=gs://YOUR_BUCKET_NAME/AND_STAGING_DIRECTORY',
-      # CHANGE 5/5: Your Google Cloud Storage path is required for temporary
-      # files.
+      # # CHANGE 5/5: Your Google Cloud Storage path is required for temporary
+      # # files.
       # '--temp_location=gs://YOUR_BUCKET_NAME/AND_TEMP_DIRECTORY',
       # '--job_name=your-wordcount-job',
+      "--runner=PortableRunner",
+      "--job_endpoint=localhost:8099",
+      "--environment_type=LOOPBACK",
+  
   ])
 
   # We use the save_main_session option because one or more DoFn's in this
   # workflow rely on global context (e.g., a module imported at module level).
   pipeline_options = PipelineOptions(pipeline_args)
   pipeline_options.view_as(SetupOptions).save_main_session = True
-  with beam.Pipeline(options=pipeline_options) as p:
 
+  
 
+  p = beam.Pipeline(options=pipeline_options)
 
-    # Read the text file[pattern] into a PCollection.
-    lines = p | ReadFromText(known_args.input)
+  # Read the text file[pattern] into a PCollection.
+  lines = p | 'read' >> ReadFromText(known_args.input)
 
-    # Count the occurrences of each word.
-    counts = (
-        lines
-        | 'Split' >> (beam.FlatMap(lambda x: re.findall(r'[A-Za-z\']+', x))
-                      .with_output_types(unicode))
-        | 'PairWithOne' >> beam.Map(lambda x: (x, 1))
-        | 'GroupAndSum' >> beam.CombinePerKey(sum))
+  # Count the occurrences of each word.
+  def count_ones(word_ones):
+    (word, ones) = word_ones
+    return (word, sum(ones))
 
-    # Format the counts into a PCollection of strings.
-    def format_result(word_count):
-      (word, count) = word_count
-      return '%s: %s' % (word, count)
+  counts = (lines
+            | 'split' >> (beam.ParDo(WordExtractingDoFn())
+                          .with_output_types(unicode))
+            | 'pair_with_one' >> beam.Map(lambda x: (x, 1))
+            | 'group' >> beam.GroupByKey()
+            | 'count' >> beam.Map(count_ones))
 
-    output = counts | 'Format' >> beam.Map(format_result)
+  # Format the counts into a PCollection of strings.
+  def format_result(word_count):
+    (word, count) = word_count
+    return '%s: %d' % (word, count)
 
-    # Write the output using a "Write" transform that has side effects.
-    # pylint: disable=expression-not-assigned
-    output | WriteToText(known_args.output)
+  output = counts | 'format' >> beam.Map(format_result)
+
+  # Write the output using a "Write" transform that has side effects.
+  # pylint: disable=expression-not-assigned
+  output | 'write' >> WriteToText(known_args.output)
+
+  result = p.run()
+  result.wait_until_finish()
+
+  # Do not query metrics when creating a template which doesn't run
+  if (not hasattr(result, 'has_job')    # direct runner
+      or result.has_job):               # not just a template creation
+    empty_lines_filter = MetricsFilter().with_name('empty_lines')
+    query_result = result.metrics().query(empty_lines_filter)
+    if query_result['counters']:
+      empty_lines_counter = query_result['counters'][0]
+      logging.info('number of empty lines: %d', empty_lines_counter.result)
+
+    word_lengths_filter = MetricsFilter().with_name('word_len_dist')
+    query_result = result.metrics().query(word_lengths_filter)
+    if query_result['distributions']:
+      word_lengths_dist = query_result['distributions'][0]
+      logging.info('average word length: %d', word_lengths_dist.result.mean)
 
 
 if __name__ == '__main__':
