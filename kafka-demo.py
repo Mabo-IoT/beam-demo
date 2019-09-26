@@ -13,6 +13,7 @@ from apache_beam.io.external.kafka import ReadFromKafka
 from apache_beam.io.external.kafka import WriteToKafka
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
+from apache_beam.io import WriteToText
 
 
 class ParseTimestamp(beam.DoFn):
@@ -50,9 +51,9 @@ def run(argv=None):
     known_args, pipeline_args = parser.parse_known_args(argv)
 
     pipeline_args.extend([
-        # "--runner=FlinkRunner",
-        # "--flink_master_url=localhost:8081", 
-        "--runner=DirectRunner",
+        "--runner=FlinkRunner",
+        "--flink_master_url=localhost:8081", 
+        # "--runner=DirectRunner",
         "--environment_type=LOOPBACK",
         "--experiments=beam_fn_api",
 
@@ -66,15 +67,17 @@ def run(argv=None):
     p = beam.Pipeline(options=pipeline_options)
     # 1. creat kafka message read io
     consumer_config: dict = {
-        "bootstrap.servers": "localhost:9092"
+        "bootstrap.servers": "192.168.0.110:9092",
+        
     }
     topics: List[str] = ["test"]
+    expansion_service = "localhost:8097",   # flink jobserver sevice
 
     message = (p
-            |"ReadFromKafka"  >> ReadFromKafka(consumer_config,topics)
-            # |"ParseJson"      >> beam.ParDo(ParseJson())
-            # |"TimestampValue" >> beam.ParDo(ParseTimestamp())
-            # |"Windows"        >> beam.WindowInto((window.FixedWindows(60)))
+            |"ReadFromKafka"  >> ReadFromKafka(consumer_config,topics, expansion_service = "localhost:8097")
+            |"ParseJson"      >> beam.ParDo(ParseJson())
+            |"TimestampValue" >> beam.ParDo(ParseTimestamp())
+            |"Windows"        >> beam.WindowInto((window.FixedWindows(60)))
     )
     # write into text
     message | 'write' >> WriteToText(known_args.output)

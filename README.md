@@ -8,6 +8,11 @@ python-beam-flink
 3. 只支持`flink1.8`，不支持1.9以上
 4. ```python -m apache_beam.examples.wordcount --input /home/heathkang/Projects/Proj-mv/Beam/beam-demo/test.txt --output /home/heathkang/Projects/Proj-mv/Beam/beam-demo/handle.txt --runner PortableRunner --environment_type=LOOPBACK --job_endpoint=localhost:8099``` is failed
 5. ```python -m apache_beam.examples.wordcount --input /home/heathkang/Projects/Proj-mv/Beam/beam-demo/test.txt --output /home/heathkang/Projects/Proj-mv/Beam/beam-demo/handle.txt --runner FlinkRunner --environment_type=LOOPBACK --experiments=beam_fn_api --flink_master_url=localhost:8081``` is good **must have --experiments=beam_fn_api** 
+6. 由于python的kafka是调用java的库(大多数runner是用java写的))，所以需要`Expansion Service`， flink的jobserver 默认为`localhost:8097`;也就是说要通过2的命令启动`java expansion service`
+
+## nextsteps
+1. 测试一下kafka的数据，看能否行的通
+2. 下一步看能否设置metric来查看当前的data状态
 
 # Program-model
 `Pipline` ： `PCollection` => `Transform` => `PCollection` => `Transform`...
@@ -69,5 +74,3 @@ python-beam-flink
 ## metric
 beam提供metric来查看当前计算的state
 
-## nextsteps
-1. 测试一下kafka的数据，看能否行的通

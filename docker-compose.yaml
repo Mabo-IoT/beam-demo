@@ -26,7 +26,7 @@ services:
       - kafka:/kafka
     environment:
       # KAFKA_ADVERTISED_HOST_NAME: ${hostname}
-      KAFKA_ADVERTISED_HOST_NAME: kafka
+      KAFKA_ADVERTISED_HOST_NAME: 192.168.0.110 ## very important!!!!!!
       KAFKA_CREATE_TOPICS: "test:1:1" # create topic test
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
     depends_on:
