@@ -93,11 +93,14 @@ def run(argv=None):
       # # files.
       # '--temp_location=gs://YOUR_BUCKET_NAME/AND_TEMP_DIRECTORY',
       # '--job_name=your-wordcount-job',
-      "--runener=DierectRunner",
+      # "--runener=DirectRunner",
+      "--runner=FlinkRunner",
+      "--flink_master_url=localhost:8081", 
       # "--runner=PortableRunner",
     
-      "--job_endpoint=localhost:8099",
+      # "--job_endpoint=localhost:8099",
       "--environment_type=LOOPBACK",
+      "--experiments=beam_fn_api",
   
   ])
 
@@ -125,10 +128,11 @@ def run(argv=None):
 
   counts = (lines
             | 'split' >> (beam.ParDo(WordExtractingDoFn())
-                          .with_output_types(unicode))
+                          # output | 'write' >> WriteToText(known_args.output)th_output_types(unicode))
             | 'pair_with_one' >> beam.Map(lambda x: (x, 1))
             | 'group' >> beam.GroupByKey()
             | 'count' >> beam.Map(count_ones))
+  )
 
   # Format the counts into a PCollection of strings.
   def format_result(word_count):
