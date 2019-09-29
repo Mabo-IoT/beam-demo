@@ -9,6 +9,8 @@ from past.builtins import unicode
 import json
 import apache_beam as beam
 from apache_beam import window
+# from apache_beam.transforms import AccumulationMode
+from apache_beam.transforms import trigger
 from apache_beam.io.external.kafka import ReadFromKafka
 from apache_beam.io.external.kafka import WriteToKafka
 from apache_beam.options.pipeline_options import PipelineOptions
@@ -38,16 +40,21 @@ class ParseJson(beam.DoFn):
         yield data
 
 
+class LoggingDoFn(beam.DoFn):
+    def process(self, element):
+        logging.info(element)
+
+
 def run(argv=None):
     """
     Main entry point; defines and runs the wordcount pipeline.
     """
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--output',
-                      dest='output',
-                      required=True,
-                      help='Output file to write results to.')
+    # parser.add_argument('--output',
+    #                   dest='output',
+    #                   required=True,
+    #                   help='Output file to write results to.')
     known_args, pipeline_args = parser.parse_known_args(argv)
 
     pipeline_args.extend([
@@ -55,10 +62,14 @@ def run(argv=None):
         "--flink_master_url=localhost:8081", 
         # "--runner=DirectRunner",
         "--environment_type=LOOPBACK",
-        "--experiments=beam_fn_api",
-
+        "--experiments=beam_fn_api"
+        
     ])
 
+    known_args = {
+        "output": "./test/",
+        "suffix":".csv",
+    }
     # We use the save_main_session option because one or more DoFn's in this
     # workflow rely on global context (e.g., a module imported at module level).
     pipeline_options = PipelineOptions(pipeline_args)
@@ -67,7 +78,7 @@ def run(argv=None):
     p = beam.Pipeline(options=pipeline_options)
     # 1. creat kafka message read io
     consumer_config: dict = {
-        "bootstrap.servers": "192.168.0.110:9092",
+        "bootstrap.servers": "192.168.1.21:9092",
         
     }
     topics: List[str] = ["test"]
@@ -77,11 +88,15 @@ def run(argv=None):
             |"ReadFromKafka"  >> ReadFromKafka(consumer_config,topics, expansion_service = "localhost:8097")
             |"ParseJson"      >> beam.ParDo(ParseJson())
             |"TimestampValue" >> beam.ParDo(ParseTimestamp())
-            |"Windows"        >> beam.WindowInto((window.FixedWindows(60)))
+            |"Windows"        >> beam.WindowInto((window.FixedWindows(60)),
+                                                    trigger=trigger.AfterProcessingTime(2*60),
+                                                    accumulation_mode=trigger.AccumulationMode.DISCARDING)
+            # | "Group"   >> beam.GroupByKey()
     )
     # write into text
-    message | 'write' >> WriteToText(known_args.output)
-
+    message | 'write' >> WriteToText(known_args["output"], file_name_suffix=known_args["suffix"], num_shards=10)
+    # log 
+    # message | 'logging' >> beam.ParDo(LoggingDoFn())
     result= p.run()
     result.wait_until_finish()
 
