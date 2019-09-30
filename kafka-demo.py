@@ -81,22 +81,22 @@ def run(argv=None):
         "bootstrap.servers": "192.168.1.21:9092",
         
     }
-    topics: List[str] = ["test"]
+    topics: List[str] = "test"
     expansion_service = "localhost:8097",   # flink jobserver sevice
 
     message = (p
             |"ReadFromKafka"  >> ReadFromKafka(consumer_config,topics, expansion_service = "localhost:8097")
-            |"ParseJson"      >> beam.ParDo(ParseJson())
-            |"TimestampValue" >> beam.ParDo(ParseTimestamp())
-            |"Windows"        >> beam.WindowInto((window.FixedWindows(60)),
-                                                    trigger=trigger.AfterProcessingTime(2*60),
-                                                    accumulation_mode=trigger.AccumulationMode.DISCARDING)
+            # |"ParseJson"      >> beam.ParDo(ParseJson())
+            # |"TimestampValue" >> beam.ParDo(ParseTimestamp())
+            # |"Windows"        >> beam.WindowInto((window.FixedWindows(60)),
+            #                                         trigger=trigger.AfterProcessingTime(2*60),
+            #                                         accumulation_mode=trigger.AccumulationMode.DISCARDING)
             # | "Group"   >> beam.GroupByKey()
     )
     # write into text
-    message | 'write' >> WriteToText(known_args["output"], file_name_suffix=known_args["suffix"], num_shards=10)
+    # message | 'write' >> WriteToText(known_args["output"], file_name_suffix=known_args["suffix"], num_shards=10)
     # log 
-    # message | 'logging' >> beam.ParDo(LoggingDoFn())
+    message | 'logging' >> beam.ParDo(LoggingDoFn())
     result= p.run()
     result.wait_until_finish()
 

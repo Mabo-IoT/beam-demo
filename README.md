@@ -10,7 +10,7 @@ python-beam-flink
 5. ```python -m apache_beam.examples.wordcount --input /home/heathkang/Projects/Proj-mv/Beam/beam-demo/test.txt --output /home/heathkang/Projects/Proj-mv/Beam/beam-demo/handle.txt --runner FlinkRunner --environment_type=LOOPBACK --experiments=beam_fn_api --flink_master_url=localhost:8081``` is good **must have --experiments=beam_fn_api** 
 6. 由于python的kafka是调用java的库(大多数runner是用java写的))，所以需要`Expansion Service`， flink的jobserver 默认为`localhost:8097`;也就是说要通过2的命令启动`java expansion service`
 7. window配合trigger使用
-8. 也许需要镜像`apachebeam/java_sdk`
+8. 也许需要镜像`apachebeam/java_sdk`,确实需要该镜像来进行一些service的提供
 
 ## nextsteps
 1. 测试一下kafka的数据，看能否行的通
